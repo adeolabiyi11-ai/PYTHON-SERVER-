@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import time
 
 app = Flask(__name__)
@@ -7,6 +8,10 @@ app = Flask(__name__)
 # CONFIG
 # ========================
 API_KEY = "mysecret123"
+ALLOWED_ORIGIN = "https://adeola.base44.app"
+
+# Enable CORS for ONLY your website
+CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGIN}})
 
 # ========================
 # DATA STORAGE
@@ -32,6 +37,12 @@ last_data_received_time = 0
 def authenticate(req):
     key = req.headers.get("x-api-key")
     return key == API_KEY
+
+def check_origin():
+    origin = request.headers.get("Origin")
+    if origin != ALLOWED_ORIGIN:
+        return False
+    return True
 
 # ========================
 # AI FUNCTIONS
@@ -62,7 +73,7 @@ def intruder_speed():
 # ========================
 @app.route("/")
 def home():
-    return jsonify({"message": "API Running"})
+    return "Ultimate Home Guardian API Connected to Base44"
 
 @app.route("/ping")
 def ping():
@@ -89,7 +100,7 @@ def device_status():
     return jsonify({"device": "OFFLINE"})
 
 # ========================
-# SENSOR DATA
+# SENSOR DATA (FROM ARDUINO)
 # ========================
 @app.route("/arduino/data", methods=["GET", "POST"])
 def receive():
@@ -137,16 +148,19 @@ def receive():
         "timestamp": t
     }
 
-    # ✅ Track last data received
     last_data_received_time = time.time()
 
     return jsonify({"status": "received"})
 
 # ========================
-# GET SENSOR DATA
+# WEBSITE FETCH DATA
 # ========================
 @app.route("/sensor_data")
 def sensor_data():
+
+    if not check_origin():
+        return jsonify({"error": "Forbidden"}), 403
+
     return jsonify(latest_data)
 
 # ========================
@@ -155,6 +169,9 @@ def sensor_data():
 @app.route("/send_command", methods=["POST"])
 def send_command():
     global pending_command, last_command_sent, last_command_time, command_fetched
+
+    if not check_origin():
+        return jsonify({"error": "Forbidden"}), 403
 
     if not authenticate(request):
         return jsonify({"error": "Unauthorized"}), 401
@@ -166,7 +183,6 @@ def send_command():
 
     pending_command = data["command"]
 
-    # ✅ Track command
     last_command_sent = pending_command
     last_command_time = time.time()
     command_fetched = False
@@ -176,6 +192,9 @@ def send_command():
         "command": pending_command
     })
 
+# ========================
+# ARDUINO FETCH COMMAND
+# ========================
 @app.route("/arduino/get_command", methods=["GET"])
 def get_command():
     global pending_command, command_fetched
@@ -183,17 +202,20 @@ def get_command():
     cmd = pending_command
     pending_command = "NONE"
 
-    # ✅ Mark as fetched
     if cmd != "NONE":
         command_fetched = True
 
     return jsonify({"command": cmd})
 
 # ========================
-# 🔥 NEW STATUS ENDPOINT (IMPORTANT)
+# SYSTEM STATUS (WEBSITE ONLY)
 # ========================
 @app.route("/system_status")
 def system_status():
+
+    if not check_origin():
+        return jsonify({"error": "Forbidden"}), 403
+
     return jsonify({
         "device_status": "ONLINE" if time.time() - last_heartbeat < 20 else "OFFLINE",
 
